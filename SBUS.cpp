@@ -16,8 +16,12 @@ SBUS::SBUS (HardwareSerial* serial)
 void SBUS::begin()
 {
     serial->flush();
-    serial->begin(baud, SERIAL_8E2);
-    //serial->begin(baud, SERIAL_8E1_RXINV_TXINV);    
+    
+    #if defined(ARDUINO_AVR_UNO) // Arduino UNO
+        serial->begin(baud, SERIAL_8E2);
+    #elif defined(__MK20DX256__) // Teensy 3.2
+        serial->begin(baud, SERIAL_8E1_RXINV_TXINV);
+    #endif
 }
 
 // read the SBUS data
