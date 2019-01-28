@@ -18,14 +18,15 @@ private:
     const uint8_t footer = 0x00; // SBUS end byte
     static const uint8_t dataSize = 23; // number of bytes in an SBUS message (not including the header and footer bytes)
     uint8_t data[dataSize];
-    uint8_t parseState = 0, curByte, prevByte = footer; // parseState is 0 if waiting for the header byte to arrive
+    int parseState = -1; // parseState is -1 if waiting for the header byte to arrive
+    uint8_t curByte, prevByte = footer;
 
 public:
     uint16_t channels[16];
     bool frameLost;
     bool failSafe; // loss of connection betweeen the transmitter and receiver
-    
-    
+    const uint16_t channelMin = 172, channelMax = 1811; // the min and max value that a channel can be set to
+
 public:
     SBUS (HardwareSerial* serial);
     void begin();

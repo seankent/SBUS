@@ -1,10 +1,25 @@
 /*
-SBUS.cpp
-Sean Kent
-seankent@mit.edu
+ * SBUS.cpp
+ * Sean Kent
+ * seankent@mit.edu
  */
 
- #include "SBUS.h"
+/*
+ * The SBUS protocol uses inverted serial logic with a baud rate of 100000, 8 data bits, even parity bit,
+ * and 2 stop bits. The SBUS packet is 25 bytes long consisting of:
+ *
+ * Byte[0]: SBUS Header, 0x0F
+ * Byte[1-22]: 16 servo channels, 11 bits per servo channel
+ * Byte[23]:
+ *     + Bit 7: digital channel 17 (0x80)
+ *     + Bit 6: digital channel 18 (0x40)
+ *     + Bit 5: frame lost (0x20)
+ *     + Bit 4: failsafe activated (0x10)
+ *     + Bit 0 - 3: n/a
+ * Byte[24]: SBUS End Byte, 0x00
+ */
+
+#include "SBUS.h"
 
 // SBUS object, input the serial bus
 SBUS::SBUS (HardwareSerial* serial)
@@ -16,12 +31,7 @@ SBUS::SBUS (HardwareSerial* serial)
 void SBUS::begin()
 {
     serial->flush();
-    
-    #if defined(ARDUINO_AVR_UNO) // Arduino UNO
-        serial->begin(baud, SERIAL_8E2);
-    #elif defined(__MK20DX256__) // Teensy 3.2
-        serial->begin(baud, SERIAL_8E1_RXINV_TXINV);
-    #endif
+    serial->begin(baud, SERIAL_8E2);
 }
 
 // read the SBUS data
@@ -46,24 +56,26 @@ bool SBUS::read()
         channels[13] = (uint16_t) ((data[17] >> 7 | data[18] << 1 | data[19] << 9)  & 0x07FF);
         channels[14] = (uint16_t) ((data[19] >> 2 | data[20] << 6)                  & 0x07FF);
         channels[15] = (uint16_t) ((data[20] >> 5 | data[21] << 3)                  & 0x07FF);
+
+        frameLost = (data[22] & 0x20) >> 5; // update frameLost bit (data[22], bit 5)
+        failSafe = (data[22] & 0x10) >> 4; // update failSafe bit (data[22], bit 4)
+    
+        return true;
         }
-
-    if (data[22] & 0x20) frameLost = true; 
-    else frameLost = false;
-
-    if (data[22] & 0x10) return true; // check failSafe bit
-    else return false;   
+    else
+        {
+        return false; // the channels were not updated
+        }
 }
 
 // parse the SBUS data
 bool SBUS::parse()
 {
-    // see if serial data is available to read
-    while (serial->available() > 0)
+    while (serial->available() > 0) // see if serial data is available to read
         {
         curByte = serial->read(); // read() returns the first byte of serial data available
         
-        if (parseState == 0)
+        if (parseState == -1) // waiting for the header byte to arrive
             {
             if (curByte == header && prevByte == footer)
                 {
@@ -73,18 +85,18 @@ bool SBUS::parse()
         else
             {
             // update data (one byte at a time)
-            if (parseState <= dataSize) // parseState = 1 cooresponds to the first byte in data
+            if (parseState < dataSize) // parseState = 1 cooresponds to the first byte in data
                 {
-                data[parseState - 1] = curByte;
+                data[parseState] = curByte;
                 parseState++;
                 }
             else
                 {
-                parseState = 0; // reset parseState
+                parseState = -1; // reset parseState
+                
                 if (curByte == footer) return true; // all the data has been updated
                 else return false; // the last byte was not the SBUS end byte (something must have gone wrong)
                 }
-                
             }
         prevByte = curByte;
         }
